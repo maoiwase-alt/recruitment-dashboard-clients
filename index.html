@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>採用ダッシュボード（支援先）</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f5f8; --card:#fff; --ink:#1b2430; --muted:#6b7684; --line:#e3e7ec;
+    --navy:#1f3b5e; --accent:#2f6fed; --ok:#1a9c5b; --warn:#e0a106; --ng:#d23f3f;
+    --chip:#eef2f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;font-size:14px;line-height:1.5}
+  header{background:var(--navy);color:#fff;padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
+  header h1{font-size:18px;margin:0;font-weight:700}
+  header .sub{font-size:12px;opacity:.8}
+  header .right{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px}
+  .live{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:999px}
+  .live i{width:8px;height:8px;border-radius:50%;background:#48d48a;display:inline-block}
+  .live.err i{background:var(--ng)}
+  button{font:inherit;cursor:pointer}
+  .btn{background:#fff;color:var(--navy);border:0;border-radius:6px;padding:6px 12px;font-weight:600}
+  .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  nav.companies{background:#fff;border-bottom:1px solid var(--line);padding:0 20px;display:flex;gap:4px;overflow-x:auto}
+  nav.companies button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 14px;font-weight:600;color:var(--muted);white-space:nowrap}
+  nav.companies button.on{color:var(--navy);border-bottom-color:var(--accent)}
+  main{max-width:1280px;margin:0 auto;padding:16px 16px 48px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-bottom:14px;font-size:13px}
+  .bar label{color:var(--muted)}
+  select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+  .bar .src{margin-left:auto;color:var(--muted)}
+  .bar .src a{color:var(--accent)}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .tile .k{font-size:12px;color:var(--muted)}
+  .tile .v{font-size:26px;font-weight:700;margin-top:2px}
+  .tile .v small{font-size:12px;color:var(--muted);font-weight:500;margin-left:4px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px;margin-bottom:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+  .card h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .card h2 .note{font-weight:400;color:var(--muted);font-size:12px}
+  .card.wide{grid-column:1/-1}
+  .chart{position:relative;height:260px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{background:#f7f9fb;color:var(--muted);font-weight:600;font-size:12px}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tbl{overflow-x:auto}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:var(--chip)}
+  .pill.ok{background:#e4f6ec;color:var(--ok)}
+  .pill.ng{background:#fbe7e7;color:var(--ng)}
+  .pill.go{background:#e8effc;color:var(--accent)}
+  .pill.wait{background:#fff6d9;color:#8a6500}
+  .empty{color:var(--muted);text-align:center;padding:24px 0}
+  .msg{background:#fff6d9;border:1px solid #f1dc8f;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px}
+  .msg.err{background:#fbe7e7;border-color:#efb9b9}
+  .rowlink{color:var(--accent);text-decoration:none}
+  .sec{display:none}.sec.on{display:block}
+  @media (max-width:600px){header h1{font-size:16px}.chart{height:220px}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>採用ダッシュボード（支援先）</h1>
+    <div class="sub">ネクスゲート 採用支援クライアント進捗</div>
+  </div>
+  <div class="right">
+    <span id="live" class="live"><i></i><span id="liveText">LIVE DATA</span></span>
+    <span id="updated">最終更新: -</span>
+    <button class="btn" id="reload">更新</button>
+  </div>
+</header>
+<nav class="companies" id="companyNav"></nav>
+<main>
+  <div id="msg"></div>
+
+  <!-- 全社横断 -->
+  <section class="sec" id="sec-all">
+    <div class="bar">
+      <label>期間</label>
+      <select id="allPeriod">
+        <option value="all">全期間</option>
+        <option value="3m">直近3ヶ月</option>
+        <option value="6m">直近6ヶ月</option>
+        <option value="fy">今年度(10月〜)</option>
+      </select>
+      <span class="src">会社名をクリックで詳細へ</span>
+    </div>
+    <div class="tiles" id="allTiles"></div>
+    <div class="card wide">
+      <h2>会社別 進捗一覧 <span class="note">応募日が期間内の候補者で集計。進行中＝選考中の人数</span></h2>
+      <div class="tbl"><table id="allTable"></table></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h2>会社別 応募数と入社数</h2><div class="chart"><canvas id="cAllBar"></canvas></div></div>
+      <div class="card"><h2>月次 応募数（全社合計）</h2><div class="chart"><canvas id="cAllMonth"></canvas></div></div>
+    </div>
+  </section>
+
+  <!-- 会社別 -->
+  <section class="sec" id="sec-co">
+    <div class="bar">
+      <label>期間</label>
+      <select id="period">
+        <option value="all">全期間</option>
+        <option value="3m">直近3ヶ月</option>
+        <option value="6m">直近6ヶ月</option>
+        <option value="fy">今年度(10月〜)</option>
+      </select>
+      <label>雇用形態</label><select id="employ"><option value="">全体</option></select>
+      <label>職種</label><select id="job"><option value="">全体</option></select>
+      <span class="src">データ元: <a id="sheetLink" href="#" target="_blank" rel="noopener">スプレッドシートを開く</a></span>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="grid">
+      <div class="card"><h2>採用ファネル</h2><div class="chart"><canvas id="cFunnel"></canvas></div></div>
+      <div class="card"><h2>離脱理由の内訳</h2><div class="chart"><canvas id="cDrop"></canvas></div></div>
+      <div class="card"><h2>月次トレンド（応募数・入社数）</h2><div class="chart"><canvas id="cMonth"></canvas></div></div>
+      <div class="card"><h2>媒体別 応募数</h2><div class="chart"><canvas id="cMedia"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <h2>媒体別パフォーマンス <span class="note">率は応募数に対する割合</span></h2>
+      <div class="tbl"><table id="mediaTable"></table></div>
+    </div>
+    <div class="grid">
+      <div class="card wide">
+        <h2>媒体の月次KPI <span class="note">「媒体月次」タブから。表示回数→クリック→応募の歩留まり</span></h2>
+        <div class="tbl"><table id="kpiTable"></table></div>
+      </div>
+      <div class="card"><h2>クリック率・応募率の推移</h2><div class="chart"><canvas id="cKpi"></canvas></div></div>
+      <div class="card"><h2>応募単価（費用÷応募数）</h2><div class="chart"><canvas id="cCpa"></canvas></div></div>
+    </div>
+    <div class="card">
+      <h2>候補者一覧
+        <select id="statusFilter" style="margin-left:auto">
+          <option value="">全て</option>
+          <option value="active">進行中のみ</option>
+          <option value="hired">入社済み</option>
+          <option value="dropped">見送り/離脱</option>
+        </select>
+      </h2>
+      <div class="tbl"><table id="candTable"></table></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ===== 設定 =====================================================
+// 会社を増やすときはここに1行足す。sheetId はスプレッドシートURLの /d/ と /edit の間。
+const CONFIG = {
+  // Googleログイン方式にする場合はウェブ用OAuthクライアントIDを入れる（空なら公開CSV方式）
+  oauthClientId: "",
+  companies: [
+    { name: "櫛田工務店", sheetId: "13ulfuQkTdYSQP34Xi1ALMim6WmQNqtN68Zdsqbi1igg", color: "#2f6fed" },
+    { name: "河端建設",   sheetId: "1AiFn2-b6xzNaC_Pz3CDs-rP-n3QNu5b5_sp4eMmQTDA", color: "#1a9c5b" },
+    { name: "公進建設",   sheetId: "1nYOtB70pF0RT4WlitY9Moxc_J4gmwkU1vfZtceLNUe8", color: "#e0a106" },
+    { name: "邦建設",     sheetId: "1nsIBN4XqjSkRV16prG4v2Ku_wtSrEEXOi_BR478lWO4", color: "#8e5bd9" },
+    { name: "モテギ工業", sheetId: "1NDsadD4Uzv8RoiZyDCSIDFazZAMOWhEj-PnfWFht1oQ", color: "#d23f3f" },
+  ],
+  tabs: { cand: "応募者", media: "媒体月次" },
+};
+
+// ステータスの読み方。先頭の番号で段階を判定する。
+//  8 書類選考 / 7 面接調整中 / 6 面接済 / 5 内定 / 2 内定承諾 / 1 入社済み / 9.x 離脱
+const STAGE = {
+  passedDocs: ["7","6","5","2","1","9.2","9.3","9.4","9.5","9.6","9.7","9.8"],
+  interviewed: ["6","5","2","1","9.4","9.5","9.6","9.7","9.8"],
+  offered: ["5","2","1","9.6","9.7","9.8"],
+  hired: ["1","9.8"],
+  active: ["8","7","6","5","2"],
+};
+const code = s => { const m = String(s||"").match(/^(\d+(?:\.\d+)?)/); return m ? m[1] : ""; };
+const inStage = (c, key) => STAGE[key].includes(c.code);
+
+// ===== データ取得 ===============================================
+const LOCAL = new URLSearchParams(location.search).get("local") === "1";
+let accessToken = null;
+
+function csvUrl(sheetId, tab){
+  if (LOCAL) return `./sample/${sheetId}_${tab}.csv`;
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;
+}
+async function fetchRows(sheetId, tab){
+  if (CONFIG.oauthClientId && !LOCAL){
+    const u = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(tab)}?valueRenderOption=FORMATTED_VALUE`;
+    const r = await fetch(u, { headers: { Authorization: "Bearer " + accessToken } });
+    if (!r.ok) throw new Error(`Sheets API ${r.status}`);
+    const j = await r.json();
+    return toObjects(j.values || []);
+  }
+  const r = await fetch(csvUrl(sheetId, tab), { cache: "no-store" });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  if (/<html/i.test(text.slice(0, 200))) throw new Error("シートが公開されていない（ログイン画面が返った）");
+  return toObjects(parseCsv(text));
+}
+function parseCsv(text){
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if (q){
+      if (ch === '"'){ if (text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ","){ row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r"){ if (ch === "\r" && text[i+1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell !== "" || row.length){ row.push(cell); rows.push(row); }
+  return rows;
+}
+function toObjects(rows){
+  if (!rows.length) return [];
+  const head = rows[0].map(h => String(h).trim());
+  return rows.slice(1).filter(r => r.some(v => String(v).trim() !== "")).map(r => {
+    const o = {}; head.forEach((h, i) => o[h] = String(r[i] ?? "").trim()); return o;
+  });
+}
+function parseDate(s){
+  if (!s) return null;
+  const m = String(s).match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d = new Date(s); return isNaN(d) ? null : d;
+}
+const ym = d => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}` : "";
+const num = s => { const n = parseFloat(String(s).replace(/[,，円\s]/g, "")); return isNaN(n) ? 0 : n; };
+
+// Googleログイン方式（oauthClientId を入れたときだけ使う）
+async function ensureToken(){
+  if (!CONFIG.oauthClientId || LOCAL) return;
+  if (accessToken) return;
+  await new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+  await new Promise((res, rej) => {
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.oauthClientId,
+      scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+      callback: t => { if (t.access_token){ accessToken = t.access_token; res(); } else rej(new Error("ログインに失敗")); },
+    });
+    tc.requestAccessToken();
+  });
+}
+
+// ===== 状態 =====================================================
+const DATA = {};      // name -> { cand:[], media:[], error }
+let current = new URLSearchParams(location.search).get("co") || "all";
+const charts = {};
+function chart(id, cfg){
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), cfg);
+}
+
+async function loadAll(){
+  setLive("読み込み中…", false);
+  try { await ensureToken(); } catch(e){ setLive("ログイン失敗", true); showMsg(String(e.message||e), true); return; }
+  let errs = [];
+  await Promise.all(CONFIG.companies.map(async co => {
+    try {
+      const [candRaw, mediaRaw] = await Promise.all([fetchRows(co.sheetId, CONFIG.tabs.cand), fetchRows(co.sheetId, CONFIG.tabs.media)]);
+      DATA[co.name] = {
+        cand: candRaw.map(r => ({
+          date: parseDate(r["応募日"]), name: r["候補者名"], job: r["職種"], employ: r["雇用形態"],
+          source: r["応募経路"] || "不明", status: r["ステータス"], code: code(r["ステータス"]),
+          docDate: parseDate(r["書類通過日"]), ivDate: parseDate(r["面接日"]), offerDate: parseDate(r["内定日"]), hireDate: parseDate(r["入社日"]),
+          memo: r["メモ"],
+        })),
+        media: mediaRaw.map(r => ({
+          month: String(r["月"]).replace(/\//g, "-").slice(0, 7), source: r["媒体"] || "不明", job: r["職種"],
+          imp: num(r["表示回数"]), clicks: num(r["クリック数"]), apps: num(r["応募数"]), cost: num(r["費用(円)"]),
+        })),
+        error: null,
+      };
+    } catch(e){
+      DATA[co.name] = { cand: [], media: [], error: String(e.message || e) };
+      errs.push(`${co.name}: ${DATA[co.name].error}`);
+    }
+  }));
+  document.getElementById("updated").textContent = "最終更新: " + new Date().toLocaleString("ja-JP", { hour12: false });
+  if (errs.length){ setLive(`読込エラー ${errs.length}社`, true); showMsg("読み込めない会社があります。シートの共有設定を確認してください。<br>" + errs.join("<br>"), true); }
+  else { setLive("LIVE DATA", false); showMsg(""); }
+  render();
+}
+function setLive(t, err){ document.getElementById("liveText").textContent = t; document.getElementById("live").className = "live" + (err ? " err" : ""); }
+function showMsg(html, err){ const m = document.getElementById("msg"); m.innerHTML = html ? `<div class="msg${err?" err":""}">${html}</div>` : ""; }
+
+// ===== フィルタ ==================================================
+function periodFrom(key){
+  const now = new Date();
+  if (key === "3m") return new Date(now.getFullYear(), now.getMonth()-2, 1);
+  if (key === "6m") return new Date(now.getFullYear(), now.getMonth()-5, 1);
+  if (key === "fy"){ const y = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear()-1; return new Date(y, 9, 1); }
+  return null;
+}
+function filterCands(cands, { period, employ, job }){
+  const from = periodFrom(period);
+  return cands.filter(c => (!from || (c.date && c.date >= from)) && (!employ || c.employ === employ) && (!job || c.job === job));
+}
+function stats(cands){
+  const s = { apps: cands.length, passed: 0, interviews: 0, offers: 0, hired: 0, active: 0, dropped: 0 };
+  cands.forEach(c => {
+    const passed = inStage(c, "passedDocs") || !!c.docDate || !!c.ivDate;
+    const iv = inStage(c, "interviewed") || !!c.ivDate;
+    const of = inStage(c, "offered") || !!c.offerDate;
+    const hi = inStage(c, "hired") || !!c.hireDate;
+    if (passed) s.passed++; if (iv) s.interviews++; if (of) s.offers++; if (hi) s.hired++;
+    if (inStage(c, "active")) s.active++;
+    if (c.code.startsWith("9")) s.dropped++;
+  });
+  return s;
+}
+const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 + "%" : "-";
+const fmt = n => n.toLocaleString("ja-JP");
+
+// ===== 描画 =====================================================
+function render(){
+  document.querySelectorAll("#companyNav button").forEach(b => b.classList.toggle("on", b.dataset.name === current));
+  document.getElementById("sec-all").classList.toggle("on", current === "all");
+  document.getElementById("sec-co").classList.toggle("on", current !== "all");
+  if (current !== "all" && !CONFIG.companies.some(c => c.name === current)) current = "all";
+  if (current === "all") renderAll(); else renderCompany(current);
+}
+
+function renderAll(){
+  const period = document.getElementById("allPeriod").value;
+  const rows = CONFIG.companies.map(co => {
+    const d = DATA[co.name] || { cand: [] };
+    const cands = filterCands(d.cand, { period });
+    const s = stats(cands);
+    const last = cands.reduce((m, c) => (c.date && (!m || c.date > m)) ? c.date : m, null);
+    return { co, s, last, error: d.error, all: d.cand.length };
+  });
+  const tot = rows.reduce((a, r) => { Object.keys(r.s).forEach(k => a[k] = (a[k]||0) + r.s[k]); return a; }, {});
+  document.getElementById("allTiles").innerHTML = [
+    ["応募数", tot.apps], ["書類通過率", pct(tot.passed, tot.apps)], ["面接実施", tot.interviews],
+    ["内定", tot.offers], ["入社", tot.hired], ["進行中", tot.active],
+  ].map(([k, v]) => `<div class="tile"><div class="k">${k}（全社）</div><div class="v">${v ?? 0}</div></div>`).join("");
+
+  document.getElementById("allTable").innerHTML = `
+    <tr><th>会社</th><th class="num">応募</th><th class="num">書類通過</th><th class="num">面接</th><th class="num">内定</th><th class="num">入社</th><th class="num">進行中</th><th class="num">離脱</th><th>最終応募日</th><th>状態</th></tr>` +
+    rows.map(r => `<tr>
+      <td><a class="rowlink" href="#" data-go="${r.co.name}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${r.co.color};margin-right:6px"></span>${r.co.name}</a></td>
+      <td class="num">${r.s.apps}</td><td class="num">${r.s.passed} <small style="color:var(--muted)">(${pct(r.s.passed, r.s.apps)})</small></td>
+      <td class="num">${r.s.interviews}</td><td class="num">${r.s.offers}</td><td class="num"><b>${r.s.hired}</b></td>
+      <td class="num">${r.s.active ? `<span class="pill go">${r.s.active}</span>` : 0}</td><td class="num">${r.s.dropped}</td>
+      <td>${r.last ? r.last.toLocaleDateString("ja-JP") : "-"}</td>
+      <td>${r.error ? `<span class="pill ng">読込不可</span>` : r.all === 0 ? `<span class="pill">データなし</span>` : `<span class="pill ok">取得済</span>`}</td>
+    </tr>`).join("");
+  document.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); current = a.dataset.go; render(); });
+
+  chart("cAllBar", { type: "bar", data: { labels: rows.map(r => r.co.name), datasets: [
+    { label: "応募", data: rows.map(r => r.s.apps), backgroundColor: "#9db6e8" },
+    { label: "面接", data: rows.map(r => r.s.interviews), backgroundColor: "#f0cf6a" },
+    { label: "入社", data: rows.map(r => r.s.hired), backgroundColor: "#48b57f" } ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  const months = {};
+  rows.forEach(r => filterCands((DATA[r.co.name]||{cand:[]}).cand, { period }).forEach(c => { const k = ym(c.date); if (k){ months[k] = months[k] || {}; months[k][r.co.name] = (months[k][r.co.name]||0) + 1; } }));
+  const labels = Object.keys(months).sort();
+  chart("cAllMonth", { type: "bar", data: { labels, datasets: CONFIG.companies.map(co => ({ label: co.name, data: labels.map(l => months[l][co.name] || 0), backgroundColor: co.color, stack: "a" })) },
+    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } } });
+}
+
+function renderCompany(name){
+  const co = CONFIG.companies.find(c => c.name === name);
+  const d = DATA[name] || { cand: [], media: [] };
+  document.getElementById("sheetLink").href = `https://docs.google.com/spreadsheets/d/${co.sheetId}/edit`;
+  // フィルタ候補
+  fillSelect("employ", [...new Set(d.cand.map(c => c.employ).filter(Boolean))]);
+  fillSelect("job", [...new Set(d.cand.map(c => c.job).filter(Boolean))]);
+  const f = { period: val("period"), employ: val("employ"), job: val("job") };
+  const cands = filterCands(d.cand, f);
+  const s = stats(cands);
+
+  document.getElementById("tiles").innerHTML = [
+    ["応募数", s.apps], ["書類通過", `${s.passed}<small>${pct(s.passed, s.apps)}</small>`], ["面接実施", `${s.interviews}<small>${pct(s.interviews, s.apps)}</small>`],
+    ["内定", `${s.offers}<small>${pct(s.offers, s.apps)}</small>`], ["入社", `${s.hired}<small>${pct(s.hired, s.apps)}</small>`], ["進行中", s.active],
+  ].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  chart("cFunnel", { type: "bar", data: { labels: ["応募", "書類通過", "面接実施", "内定", "入社"], datasets: [{ data: [s.apps, s.passed, s.interviews, s.offers, s.hired], backgroundColor: ["#9db6e8", "#7fa0e0", "#5f8bd8", "#3f74cf", "#1f5fc4"] }] },
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  const drops = {};
+  cands.filter(c => c.code.startsWith("9")).forEach(c => { const k = c.status.replace(/^9\.\d\s*/, ""); drops[k] = (drops[k]||0) + 1; });
+  chart("cDrop", { type: "doughnut", data: { labels: Object.keys(drops), datasets: [{ data: Object.values(drops), backgroundColor: ["#d23f3f","#e0a106","#8e5bd9","#2f6fed","#1a9c5b","#6b7684","#f08c6a","#4cc0c0"] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right" } } } });
+  if (!Object.keys(drops).length) emptyCanvas("cDrop", "離脱なし");
+
+  const months = {};
+  cands.forEach(c => { const k = ym(c.date); if (!k) return; months[k] = months[k] || { apps: 0, hired: 0 }; months[k].apps++; });
+  cands.forEach(c => { if (inStage(c, "hired") || c.hireDate){ const k = ym(c.hireDate || c.date); if (k){ months[k] = months[k] || { apps: 0, hired: 0 }; months[k].hired++; } } });
+  const ml = Object.keys(months).sort();
+  chart("cMonth", { type: "bar", data: { labels: ml, datasets: [
+    { type: "bar", label: "応募数", data: ml.map(k => months[k].apps), backgroundColor: "#9db6e8" },
+    { type: "line", label: "入社数", data: ml.map(k => months[k].hired), borderColor: "#1a9c5b", backgroundColor: "#1a9c5b", tension: .3 } ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  // 媒体別
+  const bySrc = {};
+  cands.forEach(c => { bySrc[c.source] = bySrc[c.source] || []; bySrc[c.source].push(c); });
+  const srcRows = Object.entries(bySrc).map(([k, v]) => ({ src: k, s: stats(v) })).sort((a, b) => b.s.apps - a.s.apps);
+  chart("cMedia", { type: "bar", data: { labels: srcRows.map(r => r.src), datasets: [{ label: "応募数", data: srcRows.map(r => r.s.apps), backgroundColor: co.color }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  document.getElementById("mediaTable").innerHTML = `<tr><th>媒体</th><th class="num">応募数</th><th class="num">書類通過</th><th class="num">通過率</th><th class="num">面接数</th><th class="num">面接率</th><th class="num">内定</th><th class="num">入社数</th><th class="num">入社率</th></tr>` +
+    (srcRows.length ? srcRows.map(r => `<tr><td>${r.src}</td><td class="num">${r.s.apps}</td><td class="num">${r.s.passed}</td><td class="num">${pct(r.s.passed, r.s.apps)}</td><td class="num">${r.s.interviews}</td><td class="num">${pct(r.s.interviews, r.s.apps)}</td><td class="num">${r.s.offers}</td><td class="num"><b>${r.s.hired}</b></td><td class="num">${pct(r.s.hired, r.s.apps)}</td></tr>`).join("")
+     : `<tr><td colspan="9" class="empty">期間内の応募がありません</td></tr>`);
+
+  // 媒体月次KPI
+  const from = periodFrom(f.period);
+  const kpi = d.media.filter(m => (!from || m.month >= ym(from)) && (!f.job || m.job === f.job)).sort((a, b) => a.month.localeCompare(b.month) || a.source.localeCompare(b.source));
+  document.getElementById("kpiTable").innerHTML = `<tr><th>月</th><th>媒体</th><th>職種</th><th class="num">表示回数</th><th class="num">クリック数</th><th class="num">クリック率</th><th class="num">応募数</th><th class="num">応募率</th><th class="num">費用</th><th class="num">応募単価</th></tr>` +
+    (kpi.length ? kpi.map(m => `<tr><td>${m.month}</td><td>${m.source}</td><td>${m.job||""}</td><td class="num">${fmt(m.imp)}</td><td class="num">${fmt(m.clicks)}</td><td class="num">${rateCell(m.clicks, m.imp, 3)}</td><td class="num">${fmt(m.apps)}</td><td class="num">${rateCell(m.apps, m.clicks, 3)}</td><td class="num">${m.cost ? "¥" + fmt(m.cost) : "-"}</td><td class="num">${m.cost && m.apps ? "¥" + fmt(Math.round(m.cost / m.apps)) : "-"}</td></tr>`).join("")
+     : `<tr><td colspan="10" class="empty">「媒体月次」タブに月ごとの表示回数・クリック数・応募数を入れると表示されます</td></tr>`);
+  const km = [...new Set(kpi.map(m => m.month))].sort();
+  const agg = km.map(mo => kpi.filter(m => m.month === mo).reduce((a, m) => ({ imp: a.imp + m.imp, clicks: a.clicks + m.clicks, apps: a.apps + m.apps, cost: a.cost + m.cost }), { imp: 0, clicks: 0, apps: 0, cost: 0 }));
+  chart("cKpi", { type: "line", data: { labels: km, datasets: [
+    { label: "クリック率(%)", data: agg.map(a => a.imp ? +(a.clicks / a.imp * 100).toFixed(2) : null), borderColor: "#2f6fed", tension: .3, yAxisID: "y" },
+    { label: "応募率(%)", data: agg.map(a => a.clicks ? +(a.apps / a.clicks * 100).toFixed(2) : null), borderColor: "#1a9c5b", tension: .3, yAxisID: "y" } ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: "%" } } } } });
+  chart("cCpa", { type: "bar", data: { labels: km, datasets: [{ label: "応募単価(円)", data: agg.map(a => a.apps && a.cost ? Math.round(a.cost / a.apps) : 0), backgroundColor: "#f08c6a" }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+  if (!km.length){ emptyCanvas("cKpi", "媒体月次のデータなし"); emptyCanvas("cCpa", "媒体月次のデータなし"); }
+
+  // 候補者一覧
+  const sf = val("statusFilter");
+  const list = cands.filter(c => sf === "" || (sf === "active" && inStage(c, "active")) || (sf === "hired" && inStage(c, "hired")) || (sf === "dropped" && c.code.startsWith("9")))
+    .sort((a, b) => (b.date || 0) - (a.date || 0));
+  document.getElementById("candTable").innerHTML = `<tr><th>応募日</th><th>候補者名</th><th>職種</th><th>雇用形態</th><th>応募経路</th><th>ステータス</th><th>面接日</th><th>入社日</th><th>メモ</th></tr>` +
+    (list.length ? list.map(c => `<tr><td>${c.date ? c.date.toLocaleDateString("ja-JP") : "-"}</td><td>${esc(c.name)}</td><td>${esc(c.job)}</td><td>${esc(c.employ)}</td><td>${esc(c.source)}</td><td>${statusPill(c)}</td><td>${c.ivDate ? c.ivDate.toLocaleDateString("ja-JP") : ""}</td><td>${c.hireDate ? c.hireDate.toLocaleDateString("ja-JP") : ""}</td><td style="white-space:normal;max-width:280px">${esc(c.memo)}</td></tr>`).join("")
+     : `<tr><td colspan="9" class="empty">該当する候補者がいません</td></tr>`);
+}
+function statusPill(c){
+  const cls = inStage(c, "hired") ? "ok" : c.code.startsWith("9") ? "ng" : c.code === "8" || c.code === "7" ? "go" : "wait";
+  return `<span class="pill ${cls}">${esc(c.status || "未設定")}</span>`;
+}
+function rateCell(a, b, warnBelow){
+  if (!b) return "-"; const r = a / b * 100; return `<span${r < warnBelow ? ' style="color:var(--ng)"' : ""}>${r.toFixed(1)}%</span>`;
+}
+function emptyCanvas(id, text){
+  const c = document.getElementById(id), ctx = c.getContext("2d");
+  if (charts[id]) charts[id].destroy(); delete charts[id];
+  ctx.clearRect(0, 0, c.width, c.height); ctx.fillStyle = "#6b7684"; ctx.font = "13px sans-serif"; ctx.textAlign = "center"; ctx.fillText(text, c.width / 2, c.height / 2);
+}
+function fillSelect(id, values){
+  const el = document.getElementById(id), cur = el.value;
+  el.innerHTML = `<option value="">全体</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if (values.includes(cur)) el.value = cur;
+}
+const val = id => document.getElementById(id).value;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+
+// ===== 初期化 ===================================================
+(function init(){
+  const nav = document.getElementById("companyNav");
+  nav.innerHTML = `<button data-name="all">全社横断</button>` + CONFIG.companies.map(c => `<button data-name="${esc(c.name)}">${esc(c.name)}</button>`).join("");
+  nav.querySelectorAll("button").forEach(b => b.onclick = () => { current = b.dataset.name; render(); });
+  ["allPeriod", "period", "employ", "job", "statusFilter"].forEach(id => document.getElementById(id).onchange = render);
+  document.getElementById("reload").onclick = loadAll;
+  loadAll();
+  setInterval(loadAll, 5 * 60 * 1000); // 5分ごとに自動更新
+})();
+</script>
+</body>
+</html>
