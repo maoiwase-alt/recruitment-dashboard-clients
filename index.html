@@ -26,6 +26,8 @@
   nav.companies{background:#fff;border-bottom:1px solid var(--line);padding:0 20px;display:flex;gap:4px;overflow-x:auto}
   nav.companies button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 14px;font-weight:600;color:var(--muted);white-space:nowrap}
   nav.companies button.on{color:var(--navy);border-bottom-color:var(--accent)}
+  .solo-badge{align-self:center;margin-left:auto;font-size:12px;color:var(--muted);background:#f3f5f8;border-radius:12px;padding:3px 10px;white-space:nowrap}
+  body.solo #sec-all{display:none !important}
   main{max-width:1280px;margin:0 auto;padding:16px 16px 48px}
   .bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-bottom:14px;font-size:13px}
   .bar label{color:var(--muted)}
@@ -112,7 +114,7 @@
       </select>
       <label>雇用形態</label><select id="employ"><option value="">全体</option></select>
       <label>職種</label><select id="job"><option value="">全体</option></select>
-      <span class="src">データ元: <a id="sheetLink" href="#" target="_blank" rel="noopener">スプレッドシートを開く</a></span>
+      <span class="src">データ元: <a id="sheetLink" href="#" target="_blank" rel="noopener">スプレッドシートを開く</a> ／ <a id="soloLink" href="#" target="_blank" rel="noopener" title="この会社だけを表示する画面（定例で画面共有する用）">定例用の画面を開く</a></span>
     </div>
     <div class="tiles" id="tiles"></div>
     <div class="grid">
@@ -153,6 +155,8 @@
 const CONFIG = {
   // Googleログイン方式にする場合はウェブ用OAuthクライアントIDを入れる（空なら公開CSV方式）
   oauthClientId: "",
+  // ログインを促すドメイン（ヒント。実際の制限はシートの共有設定とOAuth同意画面「内部」で行う）
+  domain: "nex-gate.jp",
   companies: [
     { name: "櫛田工務店", sheetId: "13ulfuQkTdYSQP34Xi1ALMim6WmQNqtN68Zdsqbi1igg", color: "#2f6fed" },
     { name: "河端建設",   sheetId: "1AiFn2-b6xzNaC_Pz3CDs-rP-n3QNu5b5_sp4eMmQTDA", color: "#1a9c5b" },
@@ -187,6 +191,8 @@ async function fetchRows(sheetId, tab){
   if (CONFIG.oauthClientId && !LOCAL){
     const u = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(tab)}?valueRenderOption=FORMATTED_VALUE`;
     const r = await fetch(u, { headers: { Authorization: "Bearer " + accessToken } });
+    if (r.status === 401){ throw new Error("__EXPIRED__"); }
+    if (r.status === 403){ throw new Error("このシートを見る権限がありません（社内アカウントでログインしているか確認）"); }
     if (!r.ok) throw new Error(`Sheets API ${r.status}`);
     const j = await r.json();
     return toObjects(j.values || []);
@@ -194,7 +200,7 @@ async function fetchRows(sheetId, tab){
   const r = await fetch(csvUrl(sheetId, tab), { cache: "no-store" });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const text = await r.text();
-  if (/<html/i.test(text.slice(0, 200))) throw new Error("シートが公開されていない（ログイン画面が返った）");
+  if (/<html/i.test(text.slice(0, 200))) throw new Error("シートが社内限定のため公開CSVでは読めません。CONFIG.oauthClientId を設定してログイン方式にしてください");
   return toObjects(parseCsv(text));
 }
 function parseCsv(text){
@@ -239,15 +245,21 @@ async function ensureToken(){
     const tc = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.oauthClientId,
       scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+      hd: CONFIG.domain || undefined,
+      error_callback: e => rej(new Error("ログインが中断されました（" + (e && e.type || "不明") + "）")),
       callback: t => { if (t.access_token){ accessToken = t.access_token; res(); } else rej(new Error("ログインに失敗")); },
     });
     tc.requestAccessToken();
   });
 }
+// ログインの有効期限（約1時間）が切れたら、次の「更新」クリックで再ログインする
+function tokenExpired(){ accessToken = null; setLive("再ログインが必要", true); showMsg("ログインの有効期限が切れました。右上の「更新」を押すと再ログインします。", true); }
 
 // ===== 状態 =====================================================
 const DATA = {};      // name -> { cand:[], media:[], error }
-let current = new URLSearchParams(location.search).get("co") || "all";
+const QS = new URLSearchParams(location.search);
+let current = QS.get("co") || "all";
+const SOLO = QS.get("solo") === "1" && current !== "all"; // 定例モード: その会社だけを表示
 const charts = {};
 function chart(id, cfg){
   if (charts[id]) charts[id].destroy();
@@ -279,6 +291,7 @@ async function loadAll(){
       errs.push(`${co.name}: ${DATA[co.name].error}`);
     }
   }));
+  if (errs.some(x => x.includes("__EXPIRED__"))){ tokenExpired(); render(); return; }
   document.getElementById("updated").textContent = "最終更新: " + new Date().toLocaleString("ja-JP", { hour12: false });
   if (errs.length){ setLive(`読込エラー ${errs.length}社`, true); showMsg("読み込めない会社があります。シートの共有設定を確認してください。<br>" + errs.join("<br>"), true); }
   else { setLive("LIVE DATA", false); showMsg(""); }
@@ -368,6 +381,7 @@ function renderCompany(name){
   const co = CONFIG.companies.find(c => c.name === name);
   const d = DATA[name] || { cand: [], media: [] };
   document.getElementById("sheetLink").href = `https://docs.google.com/spreadsheets/d/${co.sheetId}/edit`;
+  document.getElementById("soloLink").href = `${location.pathname}?co=${encodeURIComponent(co.name)}&solo=1`;
   // フィルタ候補
   fillSelect("employ", [...new Set(d.cand.map(c => c.employ).filter(Boolean))]);
   fillSelect("job", [...new Set(d.cand.map(c => c.job).filter(Boolean))]);
@@ -455,8 +469,13 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": 
 // ===== 初期化 ===================================================
 (function init(){
   const nav = document.getElementById("companyNav");
-  nav.innerHTML = `<button data-name="all">全社横断</button>` + CONFIG.companies.map(c => `<button data-name="${esc(c.name)}">${esc(c.name)}</button>`).join("");
-  nav.querySelectorAll("button").forEach(b => b.onclick = () => { current = b.dataset.name; render(); });
+  if (SOLO){
+    nav.innerHTML = `<button data-name="${esc(current)}" class="on">${esc(current)}</button><span class="solo-badge">定例モード（この会社のみ表示）</span>`;
+    document.body.classList.add("solo");
+  } else {
+    nav.innerHTML = `<button data-name="all">全社横断</button>` + CONFIG.companies.map(c => `<button data-name="${esc(c.name)}">${esc(c.name)}</button>`).join("");
+    nav.querySelectorAll("button").forEach(b => b.onclick = () => { current = b.dataset.name; render(); });
+  }
   ["allPeriod", "period", "employ", "job", "statusFilter"].forEach(id => document.getElementById(id).onchange = render);
   document.getElementById("reload").onclick = loadAll;
   loadAll();
